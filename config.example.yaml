@@ -1,0 +1,93 @@
+app:
+  # Texto parcial de la ventana principal. En la foto aparece "Sistema Integrado TINI Ver. 12.15".
+  title_re: ".*Sistema Integrado TINI.*"
+  backend: "win32"
+  connect_timeout_seconds: 30
+  action_delay_seconds: 0.4
+
+paths:
+  output_dir: "artifacts/exports"
+  inspect_dir: "artifacts/inspect"
+
+webhook:
+  url: "https://example.com/webhook"
+  timeout_seconds: 60
+  extra_headers: {}
+  # Si tu webhook espera token:
+  # extra_headers:
+  #   Authorization: "Bearer CAMBIAR"
+
+schedule:
+  # yesterday: genera reporte del dia anterior.
+  # today: genera reporte del dia actual.
+  # explicit: usar from_date y to_date.
+  date_mode: "yesterday"
+  from_date: null
+  to_date: null
+
+export:
+  # El visor de la foto tiene botones "Excel", "Acrobat" y "PrintDos".
+  # Recomendado: excel si el sistema lo exporta directo.
+  preferred_button_text: "Excel"
+  report_viewer_title_re: ".*"
+  save_timeout_seconds: 90
+
+reports:
+  - id: "pendientes_entrega"
+    enabled: true
+    module_tree_path:
+      - "Control de Inventarios"
+      - "Reportes"
+      - "Reportes de Movimientos"
+      - "Reporte de Pendientes de Entrega"
+    window_title_re: ".*Pendientes de Entrega.*"
+    fields:
+      from_date:
+        label: "Fecha desde:"
+        value: "{from_date:%Y/%m/%d}"
+      to_date:
+        label: "Fecha hasta:"
+        value: "{to_date:%Y/%m/%d}"
+    options:
+      radio_texts:
+        - "Ventas Pendientes de Entrega"
+        - "Por Comprobante"
+      checkboxes:
+        "Incluir Detalle de Entregas": false
+    process_button_text: "Procesar Reporte"
+    output_name: "pendientes_entrega_{from_date:%Y%m%d}_{to_date:%Y%m%d}"
+
+  - id: "movimientos_producto"
+    enabled: true
+    module_tree_path:
+      - "Control de Inventarios"
+      - "Reportes"
+      - "Reportes de Movimientos"
+      - "Movimiento por Articulo"
+    window_title_re: ".*Movimientos por Producto.*"
+    fields:
+      from_date:
+        label: "Desde"
+        value: "{from_date:%Y%m%d}"
+      to_date:
+        label: "Hasta"
+        value: "{to_date:%Y/%m/%d}"
+    dropdowns:
+      "Transaccion": "Todos"
+      "Equipo": "Todos"
+      "Cuenta": "Todos"
+      "Proveedor": "Todos"
+      "Grupo1": "Todos"
+      "Grupo2": "Todos"
+      "Grupo3": "Todos"
+      "Grupo4": "Todos"
+      "Nivel de Detalle": "Detalle de Articulos"
+    list_select_all:
+      - "Bodega"
+      - "Productos"
+    options:
+      checkboxes:
+        "Detallar por Bodega": false
+        "Detallar por Nro. de Comprobante": false
+    process_button_text: "Procesar"
+    output_name: "movimientos_producto_{from_date:%Y%m%d}_{to_date:%Y%m%d}"

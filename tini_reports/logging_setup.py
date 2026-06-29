@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+
+def configure_logging(log_dir: str | Path = "artifacts/logs") -> None:
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+    log_file = Path(log_dir) / "tini_reports.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
