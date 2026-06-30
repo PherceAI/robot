@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pywinauto import Application, Desktop, timings
+from pywinauto import Application, Desktop, mouse, timings
 from pywinauto.keyboard import send_keys
 
 from .config import ReportDates, render_template
@@ -266,22 +266,34 @@ class TiniAutomation:
         )
 
     def _export_from_viewer(self, viewer: Any, report: dict[str, Any], dates: ReportDates) -> ExportedReport:
-        output_dir = Path(self.config.get("paths", {}).get("output_dir", "artifacts/exports"))
+        output_dir = Path(self.config.get("paths", {}).get("output_dir", "artifacts/exports")).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         output_base = render_template(report.get("output_name", report["id"]), dates)
         expected = output_dir / f"{output_base}.xlsx"
 
         export_text = self.config.get("export", {}).get("preferred_button_text", "Excel")
         export_button = self._find_by_text(viewer, export_text)
-        if export_button is None:
-            raise RuntimeError(f"Export button not found in viewer: {export_text}")
 
         LOGGER.info("Exporting report %s to %s", report["id"], expected)
         before = set(output_dir.glob("*"))
-        export_button.click_input()
+        if export_button is not None:
+            export_button.click_input()
+        else:
+            self._click_export_offset(viewer, report, export_text)
         self._handle_save_dialog(expected)
         exported = self._wait_for_new_file(output_dir, before, expected)
         return ExportedReport(report["id"], exported)
+
+    def _click_export_offset(self, viewer: Any, report: dict[str, Any], export_text: str) -> None:
+        offset = report.get("export_button_offset") or self.config.get("export", {}).get("button_offset")
+        if not offset:
+            raise RuntimeError(f"Export button not found in viewer: {export_text}")
+        rect = viewer.rectangle()
+        x = rect.left + int(offset["x"])
+        y = rect.top + int(offset["y"])
+        LOGGER.info("Clicking export by offset x=%s y=%s absolute=(%s,%s)", offset["x"], offset["y"], x, y)
+        mouse.click(button="left", coords=(x, y))
+        time.sleep(self.action_delay)
 
     def _handle_save_dialog(self, expected_path: Path) -> None:
         desktop = Desktop(backend=self.backend)
@@ -295,7 +307,7 @@ class TiniAutomation:
             LOGGER.info("No save dialog appeared; waiting for exported file")
             return
 
-        edit = self._find_first_control(dialog, class_name_re="Edit")
+        edit = self._find_save_filename_edit(dialog)
         if edit is not None:
             edit.set_focus()
             edit.select()
@@ -333,6 +345,20 @@ class TiniAutomation:
     def _find_first_control(self, root: Any, class_name_re: str) -> Any | None:
         matches = root.descendants(class_name_re=class_name_re)
         return matches[0] if matches else None
+
+    def _find_save_filename_edit(self, dialog: Any) -> Any | None:
+        edits = dialog.descendants(class_name_re="Edit")
+        if not edits:
+            return None
+        candidates = []
+        for edit in edits:
+            try:
+                rect = edit.rectangle()
+                if rect.width() >= 100:
+                    candidates.append(edit)
+            except Exception:
+                continue
+        return max(candidates or edits, key=lambda edit: edit.rectangle().top)
 
     def _find_by_control_id(self, root: Any, control_id: int, class_name_re: str | None = None) -> Any | None:
         kwargs = {"class_name_re": class_name_re} if class_name_re else {}

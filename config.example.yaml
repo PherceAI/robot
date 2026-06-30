@@ -30,6 +30,10 @@ export:
   # Recomendado: excel si el sistema lo exporta directo.
   preferred_button_text: "Excel"
   report_viewer_title_re: ".*Movimientos por Articulo.*"
+  # ActiveReports no expone Excel como Button; este punto es relativo a la ventana del visor.
+  button_offset:
+    x: 526
+    y: 48
   save_timeout_seconds: 90
 
 reports:
