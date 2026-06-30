@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import ctypes.wintypes
 import json
 import time
 from typing import Any
 
-from pywinauto import Desktop, mouse
+from pywinauto import Desktop
 
 from .inspect import control_to_dict
 from .logging_setup import configure_logging
@@ -23,6 +25,12 @@ def parent_chain(control: Any) -> list[dict[str, Any]]:
     return chain
 
 
+def get_cursor_position() -> tuple[int, int]:
+    point = ctypes.wintypes.POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(point))
+    return point.x, point.y
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", default="win32", choices=["win32", "uia"])
@@ -34,7 +42,7 @@ def main() -> None:
         print(f"Move el mouse al control. Capturando en {args.delay} segundos...")
         time.sleep(args.delay)
 
-    x, y = mouse.get_position()
+    x, y = get_cursor_position()
     desktop = Desktop(backend=args.backend)
     control = desktop.from_point(x, y)
     payload = {

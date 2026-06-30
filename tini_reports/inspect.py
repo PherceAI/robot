@@ -14,16 +14,23 @@ from .logging_setup import configure_logging
 LOGGER = logging.getLogger(__name__)
 
 
+def safe_call(default: Any, func: Any) -> Any:
+    try:
+        return func()
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 def control_to_dict(control: Any) -> dict[str, Any]:
     info = control.element_info
     rect = control.rectangle()
     return {
         "handle": int(control.handle) if getattr(control, "handle", None) else None,
-        "name": info.name,
-        "class_name": info.class_name,
-        "control_type": getattr(info, "control_type", None),
-        "automation_id": getattr(info, "automation_id", None),
-        "control_id": control.control_id() if hasattr(control, "control_id") else None,
+        "name": safe_call(None, lambda: info.name),
+        "class_name": safe_call(None, lambda: info.class_name),
+        "control_type": safe_call(None, lambda: getattr(info, "control_type", None)),
+        "automation_id": safe_call(None, lambda: getattr(info, "automation_id", None)),
+        "control_id": safe_call(None, lambda: control.control_id() if hasattr(control, "control_id") else None),
         "rectangle": {
             "left": rect.left,
             "top": rect.top,

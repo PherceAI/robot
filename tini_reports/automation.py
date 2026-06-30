@@ -49,7 +49,10 @@ class TiniAutomation:
     def run_report(self, report: dict[str, Any], dates: ReportDates) -> ExportedReport:
         report_id = report["id"]
         LOGGER.info("Running report %s", report_id)
-        self._open_report(report)
+        if report.get("skip_open", False):
+            LOGGER.info("Skipping report open step for %s; using existing dialog", report_id)
+        else:
+            self._open_report(report)
         dialog = self._wait_for_dialog(report.get("window_title_re", ".*"))
         self._fill_report_dialog(dialog, report, dates)
 
@@ -116,35 +119,57 @@ class TiniAutomation:
         for field_name, field_config in (report.get("fields") or {}).items():
             value = render_template(field_config.get("value"), dates)
             LOGGER.info("Setting field %s=%s", field_name, value)
-            self._set_field_near_label(dialog, field_config.get("label", field_name), str(value))
+            self._set_field(dialog, field_config, field_name, str(value))
 
         for label, value in (report.get("dropdowns") or {}).items():
             self._select_dropdown(dialog, label, render_template(value, dates))
+        for dropdown_config in report.get("dropdown_controls") or []:
+            self._select_dropdown_control(dialog, dropdown_config, render_template(dropdown_config.get("value"), dates))
 
         options = report.get("options") or {}
         for radio_text in options.get("radio_texts") or []:
             self._select_radio(dialog, radio_text)
+        for radio_config in options.get("radio_controls") or []:
+            self._select_radio_control(dialog, radio_config)
         for checkbox_text, checked in (options.get("checkboxes") or {}).items():
             self._set_checkbox(dialog, checkbox_text, bool(checked))
 
-    def _set_field_near_label(self, dialog: Any, label: str, value: str) -> None:
+    def _set_field(self, dialog: Any, field_config: dict[str, Any], field_name: str, value: str) -> None:
+        control_id = field_config.get("control_id")
+        if control_id is not None:
+            target = self._find_by_control_id(dialog, int(control_id), class_name_re="Edit")
+            if target is None:
+                raise RuntimeError(f"Edit control_id not found for {field_name}: {control_id}")
+        else:
+            target = self._find_field_near_label(dialog, field_config.get("label", field_name))
+        self._replace_text(target, value)
+
+    def _find_field_near_label(self, dialog: Any, label: str) -> Any:
         edits = dialog.descendants(class_name_re="Edit")
         labels = [c for c in dialog.descendants() if label.lower() in c.window_text().lower()]
         if not edits:
             raise RuntimeError(f"No Edit controls found while setting {label}")
         if not labels:
             LOGGER.warning("Label %s not found; using next empty edit", label)
-            target = self._first_empty_edit(edits)
+            return self._first_empty_edit(edits)
         else:
             label_rect = labels[0].rectangle()
             candidates = sorted(
                 edits,
                 key=lambda edit: abs(edit.rectangle().top - label_rect.top) + max(0, label_rect.left - edit.rectangle().left),
             )
-            target = candidates[0]
+            return candidates[0]
+
+    def _replace_text(self, target: Any, value: str) -> None:
         target.set_focus()
-        target.select()
-        target.type_keys(value, with_spaces=True, set_foreground=False)
+        try:
+            target.set_edit_text(value)
+        except Exception:
+            target.select()
+            if value:
+                target.type_keys(value, with_spaces=True, set_foreground=False)
+            else:
+                send_keys("{DELETE}")
         time.sleep(self.action_delay)
 
     def _first_empty_edit(self, edits: list[Any]) -> Any:
@@ -172,18 +197,46 @@ class TiniAutomation:
             send_keys("{ENTER}")
         time.sleep(self.action_delay)
 
+    def _select_dropdown_control(self, dialog: Any, dropdown_config: dict[str, Any], value: str) -> None:
+        control_id = dropdown_config.get("control_id")
+        if control_id is None:
+            raise ValueError("dropdown_controls entries require control_id")
+        target = self._find_by_control_id(dialog, int(control_id), class_name_re="ComboBox")
+        if target is None:
+            raise RuntimeError(f"ComboBox control_id not found: {control_id}")
+        try:
+            target.select(value)
+        except Exception:
+            target.set_focus()
+            send_keys("^a")
+            send_keys(value)
+            send_keys("{ENTER}")
+        time.sleep(self.action_delay)
+
     def _select_radio(self, dialog: Any, text: str) -> None:
         radio = self._find_by_text(dialog, text)
         if radio is None:
             LOGGER.warning("Radio not found: %s", text)
             return
+        self._click_checkable(radio)
+
+    def _select_radio_control(self, dialog: Any, radio_config: dict[str, Any]) -> None:
+        control_id = radio_config.get("control_id")
+        if control_id is None:
+            raise ValueError("radio_controls entries require control_id")
+        radio = self._find_by_control_id(dialog, int(control_id), class_name_re="Button")
+        if radio is None:
+            raise RuntimeError(f"Radio/Button control_id not found: {control_id}")
+        self._click_checkable(radio)
+
+    def _click_checkable(self, control: Any) -> None:
         try:
-            if hasattr(radio, "get_check_state") and radio.get_check_state() != 1:
-                radio.click_input()
+            if hasattr(control, "get_check_state") and control.get_check_state() != 1:
+                control.click_input()
             else:
-                radio.click_input()
+                control.click_input()
         except Exception:
-            radio.click()
+            control.click()
 
     def _set_checkbox(self, dialog: Any, text: str, checked: bool) -> None:
         checkbox = self._find_by_text(dialog, text)
@@ -203,7 +256,7 @@ class TiniAutomation:
         time.sleep(self.action_delay)
 
     def _wait_for_report_viewer(self, report: dict[str, Any]) -> Any:
-        title_re = self.config.get("export", {}).get("report_viewer_title_re") or report.get("viewer_title_re", ".*")
+        title_re = report.get("viewer_title_re") or self.config.get("export", {}).get("report_viewer_title_re", ".*")
         desktop = Desktop(backend=self.backend)
         LOGGER.info("Waiting for report viewer: %s", title_re)
         return timings.wait_until_passes(
@@ -280,3 +333,13 @@ class TiniAutomation:
     def _find_first_control(self, root: Any, class_name_re: str) -> Any | None:
         matches = root.descendants(class_name_re=class_name_re)
         return matches[0] if matches else None
+
+    def _find_by_control_id(self, root: Any, control_id: int, class_name_re: str | None = None) -> Any | None:
+        kwargs = {"class_name_re": class_name_re} if class_name_re else {}
+        for control in root.descendants(**kwargs):
+            try:
+                if hasattr(control, "control_id") and control.control_id() == control_id:
+                    return control
+            except Exception:
+                continue
+        return None

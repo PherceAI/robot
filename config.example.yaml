@@ -29,12 +29,12 @@ export:
   # El visor de la foto tiene botones "Excel", "Acrobat" y "PrintDos".
   # Recomendado: excel si el sistema lo exporta directo.
   preferred_button_text: "Excel"
-  report_viewer_title_re: ".*"
+  report_viewer_title_re: ".*Movimientos por Articulo.*"
   save_timeout_seconds: 90
 
 reports:
   - id: "pendientes_entrega"
-    enabled: true
+    enabled: false
     module_tree_path:
       - "Control de Inventarios"
       - "Reportes"
@@ -59,35 +59,44 @@ reports:
 
   - id: "movimientos_producto"
     enabled: true
+    # En TINI los paneles principales aparecen como AfxOleControl42, no como TreeView.
+    # Por ahora se abre manualmente este formulario y el robot llena/procesa/exporta.
+    skip_open: true
     module_tree_path:
       - "Control de Inventarios"
       - "Reportes"
-      - "Reportes de Movimientos"
       - "Movimiento por Articulo"
-    window_title_re: ".*Movimientos por Producto.*"
+    window_title_re: ".*Reporte de Movimientos.*"
+    viewer_title_re: ".*Movimientos por Articulo.*"
     fields:
       from_date:
-        label: "Desde"
-        value: "{from_date:%Y%m%d}"
+        label: "Fecha Desde:"
+        control_id: 5
+        value: "{from_date:%Y/%m/%d}"
       to_date:
-        label: "Hasta"
+        label: "Hasta:"
+        control_id: 24
         value: "{to_date:%Y/%m/%d}"
-    dropdowns:
-      "Transaccion": "Todos"
-      "Equipo": "Todos"
-      "Cuenta": "Todos"
-      "Proveedor": "Todos"
-      "Grupo1": "Todos"
-      "Grupo2": "Todos"
-      "Grupo3": "Todos"
-      "Grupo4": "Todos"
-      "Nivel de Detalle": "Detalle de Articulos"
-    list_select_all:
-      - "Bodega"
-      - "Productos"
+      article_from:
+        label: "Articulo Desde:"
+        control_id: 6
+        value: ""
+      article_to:
+        label: "Hasta:"
+        control_id: 7
+        value: "zzzz"
+    dropdown_controls:
+      - label: "Bodega:"
+        control_id: 10
+        value: "Todas"
+      - label: "Transaccion:"
+        control_id: 11
+        value: "Todas"
     options:
-      checkboxes:
-        "Detallar por Bodega": false
-        "Detallar por Nro. de Comprobante": false
+      radio_controls:
+        - text: "Con Detalle de Movimientos"
+          control_id: 8
+        - text: "De Existencias"
+          control_id: 13
     process_button_text: "Procesar"
     output_name: "movimientos_producto_{from_date:%Y%m%d}_{to_date:%Y%m%d}"
